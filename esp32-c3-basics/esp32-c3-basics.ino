@@ -16,7 +16,7 @@ static const uint8_t PIN_RGB_LED_BLUE  = 5;  // rgb led -  blue [low active]
 static const uint8_t PIN_TX_LED_BLUE   = 21; // blue tx led     [high active]
 
 // function declarations
-void pin_setup();
+void gpio_setup();
 void wifi_setup();
 
 
@@ -26,15 +26,15 @@ void wifi_setup();
 // =====================================================================================================================
 void setup() {
 
-  // setup pins
-  pin_setup();
-
   // setup serial monitor and add setup delay to allow
   // the press of boot button for wifi reset during start
   Serial.begin(SERIAL_MONITOR_BAUD);
   Serial.println("Starting ESP32-C3 setup in 3s");
   delay(3000);
   Serial.println("Setting up ESP32-C3");
+
+  // setup pins
+  gpio_setup();
 
   // setup wifi
   wifi_setup();
@@ -73,9 +73,9 @@ void loop() {
 
 
 // =====================================================================================================================
-// function: pin_setup()
+// function: gpio_setup()
 // =====================================================================================================================
-void pin_setup(){
+void gpio_setup(){
 
   // setup boot button pin as input using internal pullup
   pinMode(PIN_BOOT_BUTTON, INPUT_PULLUP);
