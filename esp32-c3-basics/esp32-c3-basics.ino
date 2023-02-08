@@ -3,7 +3,9 @@
 // esp32-c3-basics
 //
 // =====================================================================================================================
+#include <WiFi.h>
 #include <WiFiManager.h>
+#include <PubSubClient.h>
 
 // baud rate used for arduino ide serial monitor
 static const uint32_t SERIAL_MONITOR_BAUD = 115200;
@@ -15,9 +17,24 @@ static const uint8_t PIN_RGB_LED_GREEN = 4;  // rgb led - green [low active]
 static const uint8_t PIN_RGB_LED_BLUE  = 5;  // rgb led -  blue [low active]
 static const uint8_t PIN_TX_LED_BLUE   = 21; // blue tx led     [high active]
 
+// mqtt definitions
+static uint32_t    MQTT_CONNECT_INTERVAL = 10000;
+static const char* MQTT_SERVER_ADDRESS = "test.mosquitto.org";
+static uint16_t    MQTT_SERVER_PORT    = 1883;
+static const char* MQTT_PUB_TOPIC_TEMPERATURE = "/Temperature";
+
+// loop interval
+static uint32_t LOOP_INTERVAL = 60000;
+
 // function declarations
 void gpio_setup();
 void wifi_setup();
+void mqtt_reconnect();
+void mqtt_publish(int8_t temperature);
+
+// global variable definitions
+static WiFiClient wifiClient;
+static PubSubClient mqttClient(wifiClient);
 
 
 
@@ -39,6 +56,9 @@ void setup() {
   // setup wifi
   wifi_setup();
 
+  // setup mqtt
+  mqtt_setup();
+
   Serial.println("Finished ESP32-C3 setup");
 }
 
@@ -49,10 +69,17 @@ void setup() {
 // =====================================================================================================================
 void loop() {
 
+  // esp32 internal temperature
+  int8_t temperature = (int8_t)temperatureRead();
+
+  // send empty line for separation
   Serial.println();
 
+  // send status of wifi connection to serial monitor
   if( WiFi.isConnected() ) {
-    Serial.print("ESP32-C3 connected to ");
+    Serial.print("ESP32-C3 (hostname ");
+    Serial.print(WiFi.getHostname());
+    Serial.print(") connected to ");    
     Serial.print(WiFi.SSID());
     Serial.print(" with ip ");
     Serial.print(WiFi.localIP());
@@ -63,11 +90,20 @@ void loop() {
     Serial.println("ESP32-C3 NOT connected");
   }
 
+  // send temperature to serial monitor
   Serial.print("ESP32-C3 temperature: ");
-  Serial.print(temperatureRead());
+  Serial.print(temperature);
   Serial.println("°C");
 
-  delay(5000);
+  // reconnect mqtt if needed and publish temperature 
+  if(!mqttClient.connected()){
+    mqtt_reconnect();
+  }
+  mqtt_publish(temperature);
+  mqttClient.loop();
+
+  // wait loop interval
+  delay(LOOP_INTERVAL);
 }
 
 
@@ -118,6 +154,50 @@ void wifi_setup(){
   } else {
     Serial.println("Successfully connected to wifi");
   }
+}
+
+
+
+// =====================================================================================================================
+// function: mqtt_setup()
+// =====================================================================================================================
+void mqtt_setup(){
+
+    mqttClient.setServer(MQTT_SERVER_ADDRESS, MQTT_SERVER_PORT);
+}
+
+
+
+// =====================================================================================================================
+// function: mqtt_reconnect()
+// =====================================================================================================================
+void mqtt_reconnect(){
+
+  do {
+    Serial.println("Connecting to MQTT server");
+    if(mqttClient.connect(WiFi.getHostname())){
+      Serial.println("Successfully connected to MQTT server");      
+    } else {
+      Serial.println("Failed to connect to MQTT server");            
+      delay(MQTT_CONNECT_INTERVAL);
+    }
+  } while(!mqttClient.connected());
+}
+
+
+
+// =====================================================================================================================
+// function: mqtt_publish()
+// =====================================================================================================================
+void mqtt_publish(int8_t temperature){
+
+  char szMqttTopic[128];
+  snprintf(szMqttTopic, sizeof(szMqttTopic), "%s%s", WiFi.getHostname(), MQTT_PUB_TOPIC_TEMPERATURE);
+
+  char szTemperature[4];
+  snprintf(szTemperature, sizeof(szTemperature), "%hhi", temperature);
+
+  mqttClient.publish(szMqttTopic, szTemperature);
 }
 
 
