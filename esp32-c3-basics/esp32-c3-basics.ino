@@ -18,13 +18,13 @@ static const uint8_t PIN_RGB_LED_BLUE  = 5;  // rgb led -  blue [low active]
 static const uint8_t PIN_TX_LED_BLUE   = 21; // blue tx led     [high active]
 
 // mqtt definitions
-static uint32_t    MQTT_CONNECT_INTERVAL = 10000;
-static const char* MQTT_SERVER_ADDRESS = "test.mosquitto.org";
-static uint16_t    MQTT_SERVER_PORT    = 1883;
-static const char* MQTT_PUB_TOPIC_TEMPERATURE = "/Temperature";
+static const uint32_t MQTT_CONNECT_INTERVAL      = 10000;
+static const char*    MQTT_SERVER_ADDRESS        = "test.mosquitto.org";
+static const uint16_t MQTT_SERVER_PORT           = 1883;
+static const char*    MQTT_PUB_TOPIC_TEMPERATURE = "/Temperature";
 
 // loop interval
-static uint32_t LOOP_INTERVAL = 60000;
+static const uint32_t LOOP_INTERVAL = 60000;
 
 // function declarations
 void gpio_setup();
@@ -79,7 +79,7 @@ void loop() {
   if( WiFi.isConnected() ) {
     Serial.print("ESP32-C3 (hostname ");
     Serial.print(WiFi.getHostname());
-    Serial.print(") connected to ");    
+    Serial.print(") connected to ");
     Serial.print(WiFi.SSID());
     Serial.print(" with ip ");
     Serial.print(WiFi.localIP());
@@ -95,7 +95,7 @@ void loop() {
   Serial.print(temperature);
   Serial.println("°C");
 
-  // reconnect mqtt if needed and publish temperature 
+  // reconnect mqtt if needed and publish temperature
   if(!mqttClient.connected()){
     mqtt_reconnect();
   }
@@ -163,7 +163,7 @@ void wifi_setup(){
 // =====================================================================================================================
 void mqtt_setup(){
 
-    mqttClient.setServer(MQTT_SERVER_ADDRESS, MQTT_SERVER_PORT);
+  mqttClient.setServer(MQTT_SERVER_ADDRESS, MQTT_SERVER_PORT);
 }
 
 
@@ -174,12 +174,11 @@ void mqtt_setup(){
 void mqtt_reconnect(){
 
   do {
-    Serial.println("Connecting to MQTT server");
-    if(mqttClient.connect(WiFi.getHostname())){
-      Serial.println("Successfully connected to MQTT server");      
-    } else {
-      Serial.println("Failed to connect to MQTT server");            
+    if(! mqttClient.connect(WiFi.getHostname())){
+      Serial.println("Failed to connect to MQTT server");
       delay(MQTT_CONNECT_INTERVAL);
+    } else {
+      Serial.println("Successfully connected to MQTT server");
     }
   } while(!mqttClient.connected());
 }
@@ -197,7 +196,11 @@ void mqtt_publish(int8_t temperature){
   char szTemperature[4];
   snprintf(szTemperature, sizeof(szTemperature), "%hhi", temperature);
 
-  mqttClient.publish(szMqttTopic, szTemperature);
+  if(! mqttClient.publish(szMqttTopic, szTemperature)) {
+    Serial.println("Failed to publish temperature");
+  } else {
+    Serial.println("Successfully published temperature");
+  }
 }
 
 
