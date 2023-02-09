@@ -20,21 +20,28 @@ static const uint8_t PIN_RGB_LED_BLUE  = 5;  // rgb led -  blue [low active]
 static const uint8_t PIN_TX_LED_BLUE   = 21; // blue tx led     [high active]
 
 // mqtt definitions
-static const uint32_t MQTT_CONNECT_INTERVAL      = 10000;
-static const char*    MQTT_SERVER_ADDRESS        = "test.mosquitto.org";
-static const uint16_t MQTT_SERVER_PORT           = 1883;
-static const char*    MQTT_PUB_TOPIC_TEMPERATURE = "/Temperature";
+static const uint32_t MQTT_CONNECT_INTERVAL        = 10000;
+static const char*    MQTT_SERVER_ADDRESS          = "test.mosquitto.org";
+static const uint16_t MQTT_SERVER_PORT             = 1883;
+static const char*    MQTT_PUB_TOPIC_TEMPERATURE   = "/Temperature";
+static const char*    MQTT_SUB_TOPIC_RGB_LED_RED   = "/RGB-Led/Red";
+static const char*    MQTT_SUB_TOPIC_RGB_LED_GREEN = "/RGB-Led/Green";
+static const char*    MQTT_SUB_TOPIC_RGB_LED_BLUE  = "/RGB-Led/Blue";
 
 // loop interval
-static const uint32_t LOOP_INTERVAL = 60000;
+static const uint32_t LOOP_INTERVAL             = 250; // main loop interval in ms
+static const uint32_t LOOP_COUNTER_ACTION_VALUE = 0;   // counter value for serial output and mqtt actions
+static const uint32_t LOOP_COUNTER_RESET_VALUE  = 240; // interval of loop actions = LOOP_COUNTER_RESET_VALUE*LOOP_INTERVAL;
 
 // function declarations
 void gpio_setup();
 void wifi_setup();
 void mqtt_reconnect();
 void mqtt_publish(int8_t temperature);
+void mqtt_subscribe_callback(char* topic, uint8_t* payload, unsigned int length);
 
 // global variable definitions
+static uint64_t loop_counter = 0;
 static WiFiClient wifiClient;
 static PubSubClient mqttClient(wifiClient);
 
@@ -71,40 +78,48 @@ void setup() {
 // =====================================================================================================================
 void loop() {
 
-  // esp32 internal temperature
-  int8_t temperature = (int8_t)temperatureRead();
+  if(loop_counter == LOOP_COUNTER_ACTION_VALUE){
 
-  // send empty line for separation
-  Serial.println();
+    // esp32 internal temperature
+    int8_t temperature = (int8_t)temperatureRead();
 
-  // send status of wifi connection to serial monitor
-  if( WiFi.isConnected() ) {
-    Serial.print("ESP32-C3 (hostname ");
-    Serial.print(WiFi.getHostname());
-    Serial.print(") connected to ");
-    Serial.print(WiFi.SSID());
-    Serial.print(" with ip ");
-    Serial.print(WiFi.localIP());
-    Serial.print(" (rssi: ");
-    Serial.print(WiFi.RSSI());
-    Serial.println(")");
-  } else {
-    Serial.println("ESP32-C3 NOT connected");
+    // send empty line for separation
+    Serial.println();
+
+    // send status of wifi connection to serial monitor
+    if( WiFi.isConnected() ) {
+      Serial.print("ESP32-C3 (hostname ");
+      Serial.print(WiFi.getHostname());
+      Serial.print(") connected to ");
+      Serial.print(WiFi.SSID());
+      Serial.print(" with ip ");
+      Serial.print(WiFi.localIP());
+      Serial.print(" (rssi: ");
+      Serial.print(WiFi.RSSI());
+      Serial.println(")");
+    } else {
+      Serial.println("ESP32-C3 NOT connected");
+    }
+
+    // send temperature to serial monitor
+    Serial.print("ESP32-C3 temperature: ");
+    Serial.print(temperature);
+    Serial.println("°C");
+
+    // reconnect mqtt if needed and publish temperature
+    if(!mqttClient.connected()){
+      mqtt_reconnect();
+    }
+    mqtt_publish(temperature);
   }
 
-  // send temperature to serial monitor
-  Serial.print("ESP32-C3 temperature: ");
-  Serial.print(temperature);
-  Serial.println("°C");
-
-  // reconnect mqtt if needed and publish temperature
-  if(!mqttClient.connected()){
-    mqtt_reconnect();
-  }
-  mqtt_publish(temperature);
+  // run mqtt client loop in high frequency to instantly handle incoming messages
   mqttClient.loop();
 
-  // wait loop interval
+  // increment loop counter and reset as specified
+  loop_counter++;
+  if(loop_counter >= LOOP_COUNTER_RESET_VALUE) loop_counter = 0;
+  // wait time according to loop interval
   delay(LOOP_INTERVAL);
 }
 
@@ -151,7 +166,7 @@ void wifi_setup(){
   }
 
   // connect to stored network or launch wifi manager
-  if(! wm.autoConnect("ESP32-C3 AP", "esp32-password") ){
+  if(!wm.autoConnect("ESP32-C3 AP", "esp32-password") ){
     Serial.println("Failed to connect to wifi");
   } else {
     Serial.println("Successfully connected to wifi");
@@ -166,6 +181,7 @@ void wifi_setup(){
 void mqtt_setup(){
 
   mqttClient.setServer(MQTT_SERVER_ADDRESS, MQTT_SERVER_PORT);
+  mqttClient.setCallback(mqtt_subscribe_callback);
 }
 
 
@@ -176,11 +192,25 @@ void mqtt_setup(){
 void mqtt_reconnect(){
 
   do {
-    if(! mqttClient.connect(WiFi.getHostname())){
+    if(!mqttClient.connect(WiFi.getHostname())){
       Serial.println("Failed to connect to MQTT server");
       delay(MQTT_CONNECT_INTERVAL);
     } else {
       Serial.println("Successfully connected to MQTT server");
+
+      char szMqttTopic[128];
+      const char* aszRGBLedTopics[3] = { MQTT_SUB_TOPIC_RGB_LED_RED, MQTT_SUB_TOPIC_RGB_LED_GREEN, MQTT_SUB_TOPIC_RGB_LED_BLUE };
+      for(unsigned int i=0; i<3; i++)
+      {
+        snprintf(szMqttTopic, sizeof(szMqttTopic), "%s%s", WiFi.getHostname(), aszRGBLedTopics[i]);
+        if(!mqttClient.subscribe(szMqttTopic)){
+          Serial.print("Failed to subscribe to topic ");
+          Serial.println(szMqttTopic);
+        } else {
+          Serial.print("Successfully subscribed to topic ");
+          Serial.println(szMqttTopic);
+        }
+      }
     }
   } while(!mqttClient.connected());
 }
@@ -198,11 +228,26 @@ void mqtt_publish(int8_t temperature){
   char szTemperature[4];
   snprintf(szTemperature, sizeof(szTemperature), "%hhi", temperature);
 
-  if(! mqttClient.publish(szMqttTopic, szTemperature)) {
+  if(!mqttClient.publish(szMqttTopic, szTemperature)) {
     Serial.println("Failed to publish temperature");
   } else {
     Serial.println("Successfully published temperature");
   }
+}
+
+
+
+// =====================================================================================================================
+// function: mqtt_subscribe_callback()
+// =====================================================================================================================
+void mqtt_subscribe_callback(char* topic, uint8_t* payload, unsigned int length){
+
+  Serial.print(topic);
+  Serial.print(" => ");
+  for (int i=0;i<length;i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
 }
 
 
