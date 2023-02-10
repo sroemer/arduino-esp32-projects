@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <PubSubClient.h>
+#include <BMP280.h>
 
 // baud rate used for arduino ide serial monitor
 static const uint32_t SERIAL_MONITOR_BAUD = 115200;
@@ -24,6 +25,7 @@ static const uint32_t MQTT_CONNECT_INTERVAL        = 10000;
 static const char*    MQTT_SERVER_ADDRESS          = "test.mosquitto.org";
 static const uint16_t MQTT_SERVER_PORT             = 1883;
 static const char*    MQTT_PUB_TOPIC_TEMPERATURE   = "/Temperature";
+static const char*    MQTT_PUB_TOPIC_PRESSURE      = "/Pressure";
 static const char*    MQTT_SUB_TOPIC_RGB_LED_RED   = "/RGB-Led/Red";
 static const char*    MQTT_SUB_TOPIC_RGB_LED_GREEN = "/RGB-Led/Green";
 static const char*    MQTT_SUB_TOPIC_RGB_LED_BLUE  = "/RGB-Led/Blue";
@@ -35,6 +37,7 @@ static const uint32_t LOOP_COUNTER_RESET_VALUE  = 240; // interval of loop actio
 
 // function declarations
 void gpio_setup();
+void i2c_setup();
 void wifi_setup();
 void mqtt_reconnect();
 void mqtt_publish(int8_t temperature);
@@ -44,6 +47,7 @@ void mqtt_subscribe_callback(char* topic, uint8_t* payload, unsigned int length)
 static uint64_t loop_counter = 0;
 static WiFiClient wifiClient;
 static PubSubClient mqttClient(wifiClient);
+static BMP280 bmp280(0x76); // I2C address 0x76
 
 
 
@@ -61,6 +65,9 @@ void setup() {
 
   // setup pins
   gpio_setup();
+
+  // setup i2c
+  i2c_setup();
 
   // setup wifi
   wifi_setup();
@@ -81,7 +88,10 @@ void loop() {
   if(loop_counter == LOOP_COUNTER_ACTION_VALUE){
 
     // esp32 internal temperature
-    int8_t temperature = (int8_t)temperatureRead();
+    int8_t internal_temperature = (int8_t)temperatureRead();
+    //Get pressure value
+    uint32_t bmp280_pressure = bmp280.getPressure();
+    int8_t bmp280_temperature = (int8_t)bmp280.getTemperature();
 
     // send empty line for separation
     Serial.println();
@@ -103,14 +113,20 @@ void loop() {
 
     // send temperature to serial monitor
     Serial.print("ESP32-C3 temperature: ");
-    Serial.print(temperature);
+    Serial.print(internal_temperature);
     Serial.println("°C");
+
+    Serial.print("BMP280 temperature: ");
+    Serial.print(bmp280_temperature);
+    Serial.print("°C\tpressure: ");
+    Serial.print(bmp280_pressure);
+    Serial.println("Pa");
 
     // reconnect mqtt if needed and publish temperature
     if(!mqttClient.connected()){
       mqtt_reconnect();
     }
-    mqtt_publish(temperature);
+    mqtt_publish(bmp280_temperature, bmp280_pressure);
   }
 
   // run mqtt client loop in high frequency to instantly handle incoming messages
@@ -144,6 +160,19 @@ void gpio_setup(){
   digitalWrite(PIN_RGB_LED_BLUE, HIGH);
 }
 
+
+
+// =====================================================================================================================
+// function: i2c_setup()
+// =====================================================================================================================
+void i2c_setup(){
+
+  // join i2c bus
+  Wire.begin();
+
+  // sensor setup
+  bmp280.begin();
+}
 
 
 // =====================================================================================================================
@@ -220,7 +249,7 @@ void mqtt_reconnect(){
 // =====================================================================================================================
 // function: mqtt_publish()
 // =====================================================================================================================
-void mqtt_publish(int8_t temperature){
+void mqtt_publish(int8_t temperature, uint32_t pressure){
 
   char szMqttTopic[128];
   snprintf(szMqttTopic, sizeof(szMqttTopic), "%s%s", WiFi.getHostname(), MQTT_PUB_TOPIC_TEMPERATURE);
@@ -232,6 +261,17 @@ void mqtt_publish(int8_t temperature){
     Serial.println("Failed to publish temperature");
   } else {
     Serial.println("Successfully published temperature");
+  }
+
+  snprintf(szMqttTopic, sizeof(szMqttTopic), "%s%s", WiFi.getHostname(), MQTT_PUB_TOPIC_PRESSURE);
+
+  char szPressure[8];
+  snprintf(szPressure, sizeof(szPressure), "%u", pressure);
+
+  if(!mqttClient.publish(szMqttTopic, szPressure)) {
+    Serial.println("Failed to publish pressure");
+  } else {
+    Serial.println("Successfully published pressure");
   }
 }
 
