@@ -164,6 +164,7 @@ void gpio_setup(){
     pinMode(PIN_RGB_LED_BLUE, OUTPUT);
     digitalWrite(PIN_RGB_LED_BLUE, HIGH);
 
+  // Setup for DOIT ESP32 DevKit V1
   } else if(0==strcmp(ARDUINO_VARIANT, "doitESP32devkitV1")){
 
 
@@ -208,7 +209,7 @@ void wifi_setup(){
   if(!wm.autoConnect(WiFi.getHostname(), "config-pw") ){
     Serial.println("Failed to connect to wifi");
   } else {
-    Serial.println("Successfully connected to wifi");
+    Serial.println("WiFi connection established");
   }
 }
 
@@ -235,7 +236,7 @@ void mqtt_reconnect(){
       Serial.println("Failed to connect to MQTT server");
       delay(MQTT_CONNECT_INTERVAL);
     } else {
-      Serial.println("Successfully connected to MQTT server");
+      Serial.println("MQTT server connection established");
 
       char szMqttTopic[128];
       const char* aszRGBLedTopics[3] = { MQTT_SUB_TOPIC_RGB_LED_RED, MQTT_SUB_TOPIC_RGB_LED_GREEN, MQTT_SUB_TOPIC_RGB_LED_BLUE };
@@ -244,9 +245,6 @@ void mqtt_reconnect(){
         snprintf(szMqttTopic, sizeof(szMqttTopic), "%s%s", WiFi.getHostname(), aszRGBLedTopics[i]);
         if(!mqttClient.subscribe(szMqttTopic)){
           Serial.print("Failed to subscribe to topic ");
-          Serial.println(szMqttTopic);
-        } else {
-          Serial.print("Successfully subscribed to topic ");
           Serial.println(szMqttTopic);
         }
       }
@@ -269,8 +267,6 @@ void mqtt_publish(int8_t temperature, uint32_t pressure){
 
   if(!mqttClient.publish(szMqttTopic, szTemperature)) {
     Serial.println("Failed to publish temperature");
-  } else {
-    Serial.println("Successfully published temperature");
   }
 
   snprintf(szMqttTopic, sizeof(szMqttTopic), "%s%s", WiFi.getHostname(), MQTT_PUB_TOPIC_PRESSURE);
@@ -280,8 +276,6 @@ void mqtt_publish(int8_t temperature, uint32_t pressure){
 
   if(!mqttClient.publish(szMqttTopic, szPressure)) {
     Serial.println("Failed to publish pressure");
-  } else {
-    Serial.println("Successfully published pressure");
   }
 }
 
