@@ -1,6 +1,6 @@
 // =====================================================================================================================
 //
-// esp32-c3-basics
+// esp32-basics
 //
 //    - SPDX-License-Identifier: GPL-2.0-only
 //
@@ -59,9 +59,12 @@ void setup() {
   // setup serial monitor and add setup delay to allow
   // the press of boot button for wifi reset during start
   Serial.begin(SERIAL_MONITOR_BAUD);
-  Serial.println("Starting ESP32-C3 setup in 3s");
+  Serial.println();
+  Serial.println("################################################################################");
+  Serial.println("Starting setup in 3s");
   delay(3000);
-  Serial.println("Setting up ESP32-C3");
+  Serial.print("Setting up ");
+  Serial.println(ARDUINO_VARIANT);
 
   // setup pins
   gpio_setup();
@@ -75,7 +78,7 @@ void setup() {
   // setup mqtt
   mqtt_setup();
 
-  Serial.println("Finished ESP32-C3 setup");
+  Serial.println("Finished setup");
 }
 
 
@@ -87,8 +90,8 @@ void loop() {
 
   if(loop_counter == LOOP_COUNTER_ACTION_VALUE){
 
-    // esp32 internal temperature
-    int8_t internal_temperature = (int8_t)temperatureRead();
+    // esp32 internal mcu temperature
+    int8_t mcu_temperature = (int8_t)temperatureRead();
     //Get pressure value
     uint32_t bmp280_pressure = bmp280.getPressure();
     int8_t bmp280_temperature = (int8_t)bmp280.getTemperature();
@@ -98,9 +101,8 @@ void loop() {
 
     // send status of wifi connection to serial monitor
     if( WiFi.isConnected() ) {
-      Serial.print("ESP32-C3 (hostname ");
       Serial.print(WiFi.getHostname());
-      Serial.print(") connected to ");
+      Serial.print(" connected to ");
       Serial.print(WiFi.SSID());
       Serial.print(" with ip ");
       Serial.print(WiFi.localIP());
@@ -108,12 +110,12 @@ void loop() {
       Serial.print(WiFi.RSSI());
       Serial.println(")");
     } else {
-      Serial.println("ESP32-C3 NOT connected");
+      Serial.println("WiFi NOT connected");
     }
 
     // send temperature to serial monitor
-    Serial.print("ESP32-C3 temperature: ");
-    Serial.print(internal_temperature);
+    Serial.print("MCU temperature: ");
+    Serial.print(mcu_temperature);
     Serial.println("°C");
 
     Serial.print("BMP280 temperature: ");
@@ -146,18 +148,26 @@ void loop() {
 // =====================================================================================================================
 void gpio_setup(){
 
-  // setup boot button pin as input using internal pullup
-  pinMode(PIN_BOOT_BUTTON, INPUT_PULLUP);
+  // Setup for ESP32 C3 Dev Board
+  if(0==strcmp(ARDUINO_VARIANT, "esp32c3")){
 
-  // setup rgb led pins and set initially high to turn led off
-  pinMode(PIN_RGB_LED_RED, OUTPUT);
-  digitalWrite(PIN_RGB_LED_RED, HIGH);
+    // setup boot button pin as input using internal pullup
+    pinMode(PIN_BOOT_BUTTON, INPUT_PULLUP);
 
-  pinMode(PIN_RGB_LED_GREEN, OUTPUT);
-  digitalWrite(PIN_RGB_LED_GREEN, HIGH);
+    // setup rgb led pins and set initially high to turn led off
+    pinMode(PIN_RGB_LED_RED, OUTPUT);
+    digitalWrite(PIN_RGB_LED_RED, HIGH);
 
-  pinMode(PIN_RGB_LED_BLUE, OUTPUT);
-  digitalWrite(PIN_RGB_LED_BLUE, HIGH);
+    pinMode(PIN_RGB_LED_GREEN, OUTPUT);
+    digitalWrite(PIN_RGB_LED_GREEN, HIGH);
+
+    pinMode(PIN_RGB_LED_BLUE, OUTPUT);
+    digitalWrite(PIN_RGB_LED_BLUE, HIGH);
+
+  } else if(0==strcmp(ARDUINO_VARIANT, "doitESP32devkitV1")){
+
+
+  }
 }
 
 
@@ -195,7 +205,7 @@ void wifi_setup(){
   }
 
   // connect to stored network or launch wifi manager
-  if(!wm.autoConnect("ESP32-C3 AP", "esp32-password") ){
+  if(!wm.autoConnect(WiFi.getHostname(), "config-pw") ){
     Serial.println("Failed to connect to wifi");
   } else {
     Serial.println("Successfully connected to wifi");
